@@ -34,7 +34,7 @@ fun main() {
     val config = getConfig()
     var app = Javalin.create(/*config*/)
         .get("/") { ctx -> ctx.result("Hello World!") }
-        .post("/request1") { ctx ->
+        /*.post("/request1") { ctx ->
             run {
                 val body = ctx.body()
                 //val tmp=Json.decodeFromString<ListFiles>(body)
@@ -138,7 +138,8 @@ fun main() {
 
                 ctx.result(res)
             }
-        }.post("/init") { ctx ->
+        }*/
+        .post("/init") { ctx ->
             run {
                 logger.info("init")
                 val body = ctx.body()
@@ -157,7 +158,7 @@ fun main() {
                 logger.info("liste fichier $idStr ...")
                 if (idStr != null && idStr.isNotEmpty()) {
                     val id = Integer.parseInt(idStr)
-                    if (id > 0 && listeGestionFichiers.contains(id)) {
+                    if (id > 0 && listeGestionFichiers.containsKey(id)) {
                         listeGestionFichiers.get(id)?.listeFichiers(ctx)
                         logger.info("listeFichiers $id OK")
                     } else {
@@ -173,7 +174,7 @@ fun main() {
                 logger.info("upload $idStr ...")
                 if (idStr != null && idStr.isNotEmpty()) {
                     val id = Integer.parseInt(idStr)
-                    if (id > 0 && listeGestionFichiers.contains(id)) {
+                    if (id > 0 && listeGestionFichiers.containsKey(id)) {
                         listeGestionFichiers.get(id)?.upload(ctx)
                         logger.info("upload $id OK")
                     } else {
@@ -225,20 +226,30 @@ class GestionFichiers {
 
                 val liste = ArrayList<Files>()
 
+                val parent=Paths.get(config.rep)
                 for (file in s2.liste) {
                     val f = Paths.get(config.rep, file.filename)
+                    if(!f.startsWith(parent)){
+                        logger.error("Le chemin est invalide ${file.filename} parent=${parent}")
+                        throw IOException("Erreur dans le chemin")
+                    }
                     if (Files2.exists(f)) {
                         logger.info("$f is exists")
-                        if(Files2.isDirectory(f)){
+                        if (Files2.isDirectory(f)) {
                             throw IOException("$f is a directory")
                         }
-                        val contenu=Files2.readAllBytes(f)
-                        val hash=hashString(contenu,"SHA-256").toHex();
-                        if(hash == s4) {
-                            logger.info("$f est identique")
-                        } else {
-                            logger.info("$f est different => on l'importe")
+                        val contenu = Files2.readAllBytes(f)
+                        if (file.hash.isEmpty()) {
+                            logger.info("$f n'a pas de hash => on l'importe")
                             liste.add(Files(file.filename, 0, "", "F"))
+                        } else {
+                            val hash = hashString(contenu, "SHA-256").toHex();
+                            if (hash.equals(file.hash)) {
+                                logger.info("$f est identique")
+                            } else {
+                                logger.info("$f est different => on l'importe")
+                                liste.add(Files(file.filename, 0, "", "F"))
+                            }
                         }
                     } else {
                         logger.info("$f is not exists")
@@ -262,7 +273,7 @@ class GestionFichiers {
 
     fun upload(ctx: Context) {
         val body = ctx.body()
-        logger.info("upload is $body")
+        logger.info("upload size is ${body.length}")
         var res = "KO"
 
         if (body.contains("=")) {
@@ -278,7 +289,8 @@ class GestionFichiers {
 
                     logger.info("file $s5 size: ${s4.length}")
                     val f = Paths.get(config.rep, s5)
-                    if(Files2.notExists(f.parent)) {
+                    logger.info("f is '$f'")
+                    if (Files2.notExists(f.parent)) {
                         logger.info("création du répertoire ${f.parent}")
                         Files2.createDirectories(f.parent)
                     }
