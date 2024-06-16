@@ -6,7 +6,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import mu.KotlinLogging
+import java.io.IOException
 import java.nio.file.Paths
+import java.security.MessageDigest
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -227,9 +229,20 @@ class GestionFichiers {
                     val f = Paths.get(config.rep, file.filename)
                     if (Files2.exists(f)) {
                         logger.info("$f is exists")
+                        if(Files2.isDirectory(f)){
+                            throw IOException("$f is a directory")
+                        }
+                        val contenu=Files2.readAllBytes(f)
+                        val hash=hashString(contenu,"SHA-256").toHex();
+                        if(hash == s4) {
+                            logger.info("$f est identique")
+                        } else {
+                            logger.info("$f est different => on l'importe")
+                            liste.add(Files(file.filename, 0, "", "F"))
+                        }
                     } else {
                         logger.info("$f is not exists")
-                        liste.add(Files(file.filename, 0, "", ""))
+                        liste.add(Files(file.filename, 0, "", "F"))
                     }
                 }
 
@@ -240,6 +253,12 @@ class GestionFichiers {
         }
         ctx.result(res)
     }
+
+
+    fun ByteArray.toHex() = joinToString(separator = "") { byte -> "%02x".format(byte) }
+
+    fun hashString(str: ByteArray, algorithm: String): ByteArray =
+        MessageDigest.getInstance(algorithm).digest(str)
 
     fun upload(ctx: Context) {
         val body = ctx.body()
@@ -259,6 +278,10 @@ class GestionFichiers {
 
                     logger.info("file $s5 size: ${s4.length}")
                     val f = Paths.get(config.rep, s5)
+                    if(Files2.notExists(f.parent)) {
+                        logger.info("création du répertoire ${f.parent}")
+                        Files2.createDirectories(f.parent)
+                    }
                     Files2.write(f, s04)
                     logger.info("write $f")
                     res = "OK"
